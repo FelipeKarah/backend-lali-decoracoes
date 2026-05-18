@@ -1,0 +1,500 @@
+// prisma/schema.prisma
+// Lali - Sistema de Aluguel de Kits de Decoração
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum UserRole {
+  ADMIN
+  CLIENT
+}
+
+enum KitCategory {
+  infantil
+  princesa
+  esporte
+  natureza
+  adulto
+}
+
+enum KitBadge {
+  hot
+  new
+}
+
+enum ComplementoCategory {
+  baloes
+  descartaveis
+  decoracao
+  velas
+}
+
+enum ItemCategory {
+  painel
+  mesa
+  bandeja
+  cadeira
+  toalha
+  luminaria
+  outros
+}
+
+enum RentalType {
+  ALUGUEL
+  CONSUMIVEL
+}
+
+enum DeliveryType {
+  RETIRADA
+  ENTREGA
+}
+
+enum PaymentMethod {
+  PIX
+  CARTAO
+  DINHEIRO
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  WITHDRAWN
+  RETURNED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  REFUNDED
+  CANCELLED
+}
+
+enum ChecklistStatus {
+  PENDING
+  OK
+  DAMAGED
+  MISSING
+}
+
+// ============================================
+// MODELOS PRINCIPAIS
+// ============================================
+
+model User {
+  id            String    @id @default(uuid())
+  name          String
+  email         String    @unique
+  password      String?
+  whatsapp      String?
+  role          UserRole  @default(CLIENT)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  reservations  Reservation[]
+  favorites     Favorite[]
+  reviews       Review[]
+  cartItems     CartItem[]
+  address       Address?
+
+  @@map("users")
+}
+
+model Address {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  cep          String
+  street       String
+  number       String
+  complement   String?
+  neighborhood String
+  city         String
+  state        String
+  country      String   @default("Brasil")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("addresses")
+}
+
+// ============================================
+// ITENS AVULSOS
+// ============================================
+
+model ItemAvulso {
+  id              String        @id @default(uuid())
+  code            String        @unique
+  name            String
+  description     String?
+  icon            String
+  category        ItemCategory
+  pricePerDay     Float
+  replacementPrice Float
+  quantity        Int           @default(1)
+  available       Int           @default(1)
+  isActive        Boolean       @default(true)
+  rentalType      RentalType    @default(ALUGUEL)
+  images          String[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  kitItems        KitItem[]
+  reservations    ReservationItem[]
+
+  @@map("itens_avulsos")
+}
+
+// ============================================
+// KITS
+// ============================================
+
+model Kit {
+  id              String       @id @default(uuid())
+  name            String
+  description     String
+  longDescription String?
+  icon            String
+  pricePerDay     Float
+  rating          Float        @default(4.5)
+  reviewsCount    Int          @default(0)
+  badge           KitBadge?
+  category        KitCategory
+  isActive        Boolean      @default(true)
+  images          String[]
+  imageBg         String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  items           KitItem[]
+  reservationKits  ReservationKit[]  // ✅ Alterado de reservations para reservationKits
+  favorites       Favorite[]
+  reviews         Review[]
+  sugestoes       KitSugestao[]
+
+  @@map("kits")
+}
+
+// ============================================
+// ITENS DO KIT
+// ============================================
+
+model KitItem {
+  id          String     @id @default(uuid())
+  kitId       String
+  itemAvulsoId String
+  quantity    Int        @default(1)
+
+  kit         Kit        @relation(fields: [kitId], references: [id], onDelete: Cascade)
+  itemAvulso  ItemAvulso @relation(fields: [itemAvulsoId], references: [id], onDelete: Cascade)
+
+  @@unique([kitId, itemAvulsoId])
+  @@map("kit_itens")
+}
+
+// ============================================
+// COMPLEMENTOS
+// ============================================
+
+model Complemento {
+  id          String            @id @default(uuid())
+  name        String
+  description String
+  icon        String
+  price       Float
+  category    ComplementoCategory
+  images     String[]
+  isActive    Boolean           @default(true)
+  stock       Int               @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  reservationItems ReservationComplemento[]
+
+  @@map("complementos")
+}
+
+// ============================================
+// RESERVAS
+// ============================================
+
+model Reservation {
+  id                String           @id @default(uuid())
+  reservationCode   String           @unique
+  userId            String
+  startDate         DateTime
+  endDate           DateTime
+  days              Int
+  subtotal          Float
+  cauction          Float            @default(0)
+  total             Float
+  status            ReservationStatus @default(PENDING)
+  paymentStatus     PaymentStatus    @default(PENDING)
+  paymentId         String?
+  paymentQrCode     String?
+  paymentCopiarCola String?
+  notes             String?
+  cauctionReturnValue Float?
+  damageNotes       String?
+  
+  // Novos campos para entrega e pagamento
+  deliveryType      DeliveryType?    @default(RETIRADA)
+  deliveryCep       String?
+  deliveryAddress   String?
+  deliveryNumber    String?
+  deliveryNeighborhood String?
+  deliveryCity      String?
+  deliveryState     String?
+  shippingPrice     Float?           @default(0)
+  
+  paymentMethod     PaymentMethod?
+  paidOnline        Boolean?         @default(false)
+  mpPaymentId       String?
+  
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  user              User             @relation(fields: [userId], references: [id])
+  // NOVO: relacionamento com kits da reserva
+  kits              ReservationKit[] // ✅ Adicionar este
+  itens             ReservationItem[]
+  complementos      ReservationComplemento[]
+  checklist         ChecklistItem[]
+  notifications     Notification[]
+
+  @@map("reservations")
+}
+
+// ============================================
+// KITS DA RESERVA (NOVO MODEL)
+// ============================================
+
+model ReservationKit {
+  id            String     @id @default(uuid())
+  reservationId String
+  kitId         String
+  name          String     // Nome do kit no momento da reserva (para histórico)
+  code          String     // Código único do kit na reserva
+  quantity      Int        @default(1)
+  pricePerDay   Float
+  days          Int
+  subtotal      Float
+  rentalType    RentalType @default(ALUGUEL)
+  startDate     DateTime   // Data específica deste kit (opcional)
+  endDate       DateTime   // Data específica deste kit (opcional)
+  
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  kit           Kit         @relation(fields: [kitId], references: [id])
+
+  @@unique([reservationId, kitId]) // Evita duplicar o mesmo kit na mesma reserva
+  @@map("reservation_kits")
+}
+
+// ============================================
+// ITENS DA RESERVA
+// ============================================
+
+model ReservationItem {
+  id            String     @id @default(uuid())
+  reservationId String
+  itemAvulsoId  String
+  name          String
+  code          String
+  quantity      Int
+  pricePerDay   Float
+  days          Int
+  subtotal      Float
+  rentalType    RentalType
+
+  reservation  Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  itemAvulso   ItemAvulso  @relation(fields: [itemAvulsoId], references: [id])
+
+  @@map("reservation_itens")
+}
+
+// ============================================
+// COMPLEMENTOS DA RESERVA
+// ============================================
+
+model ReservationComplemento {
+  id            String       @id @default(uuid())
+  reservationId String
+  complementoId String
+  name          String
+  price         Float
+  quantity      Int
+  total         Float
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  complemento Complemento @relation(fields: [complementoId], references: [id])
+
+  @@map("reservation_complementos")
+}
+
+// ============================================
+// CHECKLIST DE ITENS
+// ============================================
+
+model ChecklistItem {
+  id            String         @id @default(uuid())
+  reservationId String
+  itemCode      String
+  itemName      String
+  quantity      Int            @default(1)
+  scanned       Boolean        @default(false)
+  scannedAt     DateTime?
+  status        ChecklistStatus @default(PENDING)
+  damageNote    String?
+  createdAt     DateTime       @default(now())
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@map("checklist_items")
+}
+
+// ============================================
+// KIT SUGESTÕES (híbrido: complementos ou itens avulsos)
+// ============================================
+
+model KitSugestao {
+  id            String   @id @default(uuid())
+  kitId         String
+  tipo          String   // 'complemento' ou 'item_avulso'
+  itemId        String
+  createdAt     DateTime @default(now())
+
+  kit           Kit      @relation(fields: [kitId], references: [id], onDelete: Cascade)
+
+  @@unique([kitId, tipo, itemId])
+  @@map("kit_sugestoes")
+}
+
+// ============================================
+// FAVORITOS
+// ============================================
+
+model Favorite {
+  id        String   @id @default(uuid())
+  userId    String
+  kitId     String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kit  Kit  @relation(fields: [kitId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kitId])
+  @@map("favorites")
+}
+
+// ============================================
+// AVALIAÇÕES
+// ============================================
+
+model Review {
+  id            String   @id @default(uuid())
+  userId        String
+  kitId         String
+  reservationId String?
+  rating        Int
+  comment       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kit  Kit  @relation(fields: [kitId], references: [id], onDelete: Cascade)
+
+  @@map("reviews")
+}
+
+// ============================================
+// CARRINHO
+// ============================================
+
+model CartItem {
+  id            String   @id @default(uuid())
+  userId        String
+  itemType      String
+  itemId        String
+  quantity      Int      @default(1)
+  rentalDays    Int?
+  startDate     DateTime?
+  endDate       DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemType, itemId])
+  @@map("cart_items")
+}
+
+// ============================================
+// NOTIFICAÇÕES WHATSAPP
+// ============================================
+
+model Notification {
+  id            String   @id @default(uuid())
+  reservationId String
+  type          String
+  sentAt        DateTime @default(now())
+  status        String   @default("SENT")
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+// ============================================
+// CONFIGURAÇÕES DO SISTEMA
+// ============================================
+
+model Config {
+  id                String   @id @default(uuid())
+  companyName       String   @default("Lali")
+  companyLogo       String?
+  whatsappNumber    String   @default("5511999990000")
+  defaultCauction   Float    @default(0)
+  barcodePrefix     String   @default("PM")
+  emailSupport      String   @default("oi@lali.com.br")
+  address           String?
+  workingHours      String?
+  updatedAt         DateTime @updatedAt
+
+  @@map("configs")
+}
+// ============================================
+// PAGAMENTOS
+// ============================================
+
+model Payment {
+  id                 String   @id @default(uuid())
+  mpPaymentId        String   @unique
+  externalReference  String
+  method             String   // pix, card, boleto
+  status             String
+  amount             Float
+  installments       Int?
+  cardBrand          String?
+  qrCode             String?
+  qrCodeBase64       String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([mpPaymentId])
+  @@index([externalReference])
+  @@map("payments")
+}

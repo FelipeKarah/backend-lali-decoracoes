@@ -1,0 +1,358 @@
+// prisma/schema.prisma
+// Lali - Sistema de Aluguel de Kits de Decoração
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum UserRole {
+  ADMIN
+  CLIENT
+}
+
+enum KitCategory {
+  infantil
+  princesa
+  esporte
+  natureza
+  adulto
+}
+
+enum KitBadge {
+  hot
+  new
+}
+
+enum ComplementoCategory {
+  baloes
+  descartaveis
+  decoracao
+  velas
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  WITHDRAWN
+  RETURNED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  REFUNDED
+  CANCELLED
+}
+
+enum ChecklistStatus {
+  PENDING
+  OK
+  DAMAGED
+  MISSING
+}
+
+// ============================================
+// MODELOS PRINCIPAIS
+// ============================================
+
+model User {
+  id            String    @id @default(uuid())
+  name          String
+  email         String    @unique
+  password      String?
+  whatsapp      String?
+  role          UserRole  @default(CLIENT)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relacionamentos
+  reservations  Reservation[]
+  favorites     Favorite[]
+  reviews       Review[]
+  cartItems     CartItem[]
+  address       Address?
+
+  @@map("users")
+}
+
+model Address {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  cep          String
+  street       String
+  number       String
+  complement   String?
+  neighborhood String
+  city         String
+  state        String
+  country      String   @default("Brasil")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("addresses")
+}
+
+// ============================================
+// KITS E ITENS
+// ============================================
+
+model Kit {
+  id              String       @id @default(uuid())
+  name            String
+  description     String
+  longDescription String?
+  icon            String
+  pricePerDay     Float
+  rating          Float        @default(4.5)
+  reviewsCount    Int          @default(0)
+  badge           KitBadge?
+  category        KitCategory
+  isActive        Boolean      @default(true)
+  images          String[]
+  imageBg         String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relacionamentos
+  items           Item[]
+  reservations    Reservation[]
+  favorites       Favorite[]
+  reviews         Review[]
+  sugestoes       KitSugestao[]      @relation("kitSugestoes")
+  sugeridoPor     KitSugestao[]      @relation("sugestoesPara")
+
+  @@map("kits")
+}
+
+model Item {
+  id               String   @id @default(uuid())
+  kitId            String
+  code             String   @unique
+  name             String
+  quantity         Int      @default(1)
+  available        Int      @default(1)
+  replacementPrice Float    @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  kit Kit @relation(fields: [kitId], references: [id], onDelete: Cascade)
+
+  @@map("items")
+}
+
+// ============================================
+// COMPLEMENTOS
+// ============================================
+
+model Complemento {
+  id          String            @id @default(uuid())
+  name        String
+  description String
+  icon        String
+  price       Float
+  category    ComplementoCategory
+  isActive    Boolean           @default(true)
+  stock       Int               @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  // Relacionamentos
+  reservationItems ReservationComplemento[]
+
+  @@map("complementos")
+}
+
+// ============================================
+// RESERVAS
+// ============================================
+
+model Reservation {
+  id                String           @id @default(uuid())
+  reservationCode   String           @unique
+  userId            String
+  kitId             String
+  startDate         DateTime
+  endDate           DateTime
+  days              Int
+  subtotal          Float
+  cauction          Float            @default(200)
+  total             Float
+  status            ReservationStatus @default(PENDING)
+  paymentStatus     PaymentStatus    @default(PENDING)
+  paymentId         String?
+  paymentQrCode     String?
+  paymentCopiarCola String?
+  notes             String?
+  cauctionReturnValue Float?
+  damageNotes       String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  // Relacionamentos
+  user              User             @relation(fields: [userId], references: [id])
+  kit               Kit              @relation(fields: [kitId], references: [id])
+  complementos      ReservationComplemento[]
+  checklist         ChecklistItem[]
+  notifications     Notification[]
+
+  @@map("reservations")
+}
+
+model ReservationComplemento {
+  id            String       @id @default(uuid())
+  reservationId String
+  complementoId String
+  name          String
+  price         Float
+  quantity      Int
+  total         Float
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  complemento Complemento @relation(fields: [complementoId], references: [id])
+
+  @@map("reservation_complementos")
+}
+
+// ============================================
+// CHECKLIST DE ITENS
+// ============================================
+
+model ChecklistItem {
+  id            String         @id @default(uuid())
+  reservationId String
+  itemCode      String
+  itemName      String
+  quantity      Int            @default(1)
+  scanned       Boolean        @default(false)
+  scannedAt     DateTime?
+  status        ChecklistStatus @default(PENDING)
+  damageNote    String?
+  createdAt     DateTime       @default(now())
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@map("checklist_items")
+}
+
+// ============================================
+// KIT SUGESTÕES
+// ============================================
+
+model KitSugestao {
+  id          String   @id @default(uuid())
+  kitId       String
+  sugestaoId  String
+  createdAt   DateTime @default(now())
+
+  kit         Kit      @relation("kitSugestoes", fields: [kitId], references: [id], onDelete: Cascade)
+  sugestao    Kit      @relation("sugestoesPara", fields: [sugestaoId], references: [id], onDelete: Cascade)
+
+  @@unique([kitId, sugestaoId])
+  @@map("kit_sugestoes")
+}
+
+// ============================================
+// FAVORITOS
+// ============================================
+
+model Favorite {
+  id        String   @id @default(uuid())
+  userId    String
+  kitId     String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kit  Kit  @relation(fields: [kitId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kitId])
+  @@map("favorites")
+}
+
+// ============================================
+// AVALIAÇÕES
+// ============================================
+
+model Review {
+  id            String   @id @default(uuid())
+  userId        String
+  kitId         String
+  reservationId String?
+  rating        Int
+  comment       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kit  Kit  @relation(fields: [kitId], references: [id], onDelete: Cascade)
+
+  @@map("reviews")
+}
+
+// ============================================
+// CARRINHO
+// ============================================
+
+model CartItem {
+  id            String   @id @default(uuid())
+  userId        String
+  itemType      String
+  itemId        String
+  quantity      Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemType, itemId])
+  @@map("cart_items")
+}
+
+// ============================================
+// NOTIFICAÇÕES WHATSAPP
+// ============================================
+
+model Notification {
+  id            String   @id @default(uuid())
+  reservationId String
+  type          String
+  sentAt        DateTime @default(now())
+  status        String   @default("SENT")
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+// ============================================
+// CONFIGURAÇÕES DO SISTEMA
+// ============================================
+
+model Config {
+  id                String   @id @default(uuid())
+  companyName       String   @default("Lali")
+  companyLogo       String?
+  whatsappNumber    String   @default("5511999990000")
+  defaultCauction   Float    @default(200)
+  barcodePrefix     String   @default("PM")
+  emailSupport      String   @default("oi@lali.com.br")
+  address           String?
+  workingHours      String?
+  updatedAt         DateTime @updatedAt
+
+  @@map("configs")
+}
