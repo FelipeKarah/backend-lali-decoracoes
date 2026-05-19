@@ -6,7 +6,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common'
 import * as fs from 'fs'
 import * as path from 'path'
-import sharp from 'sharp'
+import * as sharp from 'sharp'
 import { v4 as uuid } from 'uuid'
 
 // Entidades que usam upload — adicione novas aqui quando precisar
